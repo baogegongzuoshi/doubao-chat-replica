@@ -386,8 +386,9 @@ html.restoring body{visibility:hidden} /* 刷新恢复期间整页隐藏，防�
 .pktitle{flex:1;text-align:center;font-size:16px;font-weight:500;margin-right:34px}
 .pkall{color:var(--acc);font-size:14px;cursor:pointer;user-select:none;padding:4px 2px}
 .pkgrid{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;padding:12px;align-content:start}
-.pktile{position:relative;background:#000;border-radius:8px;overflow:hidden;aspect-ratio:1/1;cursor:pointer}
-.pktile img{width:100%;height:100%;object-fit:cover;display:block}
+.pktile{position:relative;background:#000;border-radius:8px;overflow:hidden;cursor:pointer}
+.pktile:before{content:"";display:block;padding-top:100%} /* 正方形占位，兼容不支持 aspect-ratio 的旧机型（否则瓦片塌陷重叠） */
+.pktile img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
 .pkdim{position:absolute;left:0;right:0;bottom:0;background:linear-gradient(transparent,rgba(0,0,0,.65));color:#fff;font-size:9.5px;text-align:center;padding:12px 2px 3px;pointer-events:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;height:16px;box-sizing:border-box;line-height:16px}
 .pkck{position:absolute;top:6px;right:6px;width:24px;height:24px;border-radius:50%;border:2px solid #fff;background:rgba(0,0,0,.35);color:#fff;font-size:14px;line-height:20px;text-align:center;box-sizing:border-box}
 .pktile.sel .pkck{background:var(--acc);border-color:var(--acc)}
@@ -463,7 +464,7 @@ try{if(sessionStorage.getItem('dwc_active')==='1'&&sessionStorage.getItem('dwc_d
   <div id="meta"></div>
   <div id="chat"></div>
   <div id="main"></div>
-  <div class="disclaimer">本工具仅供交流学习使用，不得用于商业用途。<br>所解析内容的版权归原作者所有，如有侵权请联系删除。<br><span class="hver">V10 · 2026-09-18</span></div>
+  <div class="disclaimer">本工具仅供交流学习使用，不得用于商业用途。<br>所解析内容的版权归原作者所有，如有侵权请联系删除。<br><span class="hver">V11 · 2026-09-18</span></div>
 </div>
 <div class="selbar"><button class="gray2" onclick="exitSel()">取消</button><div class="st" id="selTitle">多选</div><button onclick="toggleSelAll()">全选</button></div>
 <div class="selfoot"><div class="selTip" id="selTip"></div><div class="selbtns"><button class="ok" id="selShare" onclick="doSelShare()">📤 分享</button><button class="blue" id="selDl" onclick="doSelDownload()">⬇ 下载</button></div></div>
@@ -688,7 +689,7 @@ function renderChat(){
     return;
   }
   let html=shead,lastEpoch=0;
-  for(const m of DATA.messages){
+  for(const m of msgs){
     if(m.epoch&&lastEpoch&&(m.epoch-lastEpoch)>300||(!lastEpoch&&m.time)){
       html+=`<div class="mtime">${m.time||''}</div>`;}
     if(m.epoch)lastEpoch=m.epoch;
@@ -1026,7 +1027,7 @@ document.addEventListener('keydown',e=>{if($('#lb').style.display==='flex'){if(e
 /* ===== 批量选择页（与已验证版本同源，列表固定为图片或视频） ===== */
 function openPicker(kind){
   pickKind=kind;
-  const list=DATA[kind==='image'?'images':'videos'].filter(x=>!x.fail);
+  const list=pkList();
   if(!list.length){toast(kind==='image'?'没有可下载的图片':'没有可下载的视频');return;}
   pickSel=new Set(list.map((_,i)=>i));
   document.body.classList.add('hidevid');
@@ -1037,7 +1038,11 @@ function openPicker(kind){
   prefetchPicker();
 }
 function hidePicker(){$('#picker').style.display='none';document.body.classList.remove('hidevid');}
-function pkList(){return DATA[pickKind==='image'?'images':'videos'].filter(x=>!x.fail);}
+/* 批量列表与对话同源：时间筛选档位激活时，只列筛后的媒体（无时间戳的保留） */
+function pkList(){
+  const cut=timeFilter?Date.now()-timeFilter*60000:0;
+  return DATA[pickKind==='image'?'images':'videos'].filter(x=>!x.fail&&(!timeFilter||!x.epoch||x.epoch*1000>=cut));
+}
 function togglePick(i){pickSel.has(i)?pickSel.delete(i):pickSel.add(i);pkRender();}
 function toggleAll(){
   const list=pkList();
@@ -1047,13 +1052,13 @@ function toggleAll(){
 }
 function pkRender(){
   const list=pkList();
-  $('#pkTitle').textContent=pickKind==='image'?'保存图片':'保存视频';
+  $('#pkTitle').textContent=(pickKind==='image'?'保存图片':'保存视频')+(timeFilter?`（筛选后 ${list.length}）`:'');
   const all=pickSel.size===list.length&&list.length>0;
   $('#pkAll').textContent=all?'取消全选':'全选';
   $('#pkGrid').innerHTML=list.map((it,i)=>{
     let media,dim=`${it.width||'?'}×${it.height||'?'}`;
     if(it.kind==='image'){media=`<img loading="lazy" src="/proxy?u=${encodeURIComponent(it.thumb||it.url)}">`;}
-    else{media=it.poster?`<img loading="lazy" src="/proxy?u=${encodeURIComponent(it.poster)}">`:'<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:30px;background:#26282c">▶</div>';
+    else{media=it.poster?`<img loading="lazy" src="/proxy?u=${encodeURIComponent(it.poster)}">`:'<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:30px;background:#26282c">▶</div>';
       if(it.duration)dim+='·'+fmtDur(it.duration);}
     return `<div class="pktile ${pickSel.has(i)?'sel':''}" onclick="togglePick(${i})">${media}<span class="pkdim">${dim}</span><span class="pkck">${pickSel.has(i)?'✓':''}</span></div>`;
   }).join('');
